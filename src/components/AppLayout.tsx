@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/useBusiness";
 import { useCrypto } from "@/hooks/useCrypto";
 import { startInactivityTimer } from "@/lib/session";
+import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, Users, ArrowLeftRight, Tag, Settings, LogOut,
   Shield, Menu, X, ChevronDown, Building2, BarChart2, FileText, Lock,
@@ -28,6 +29,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const { isUnlocked, lockVault } = useCrypto();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   // Auto-logout after 30 min inactivity
   useEffect(() => {
@@ -37,6 +39,31 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     });
     return cleanup;
   }, []);
+
+  // Pending transaction count + realtime updates
+  useEffect(() => {
+    if (!activeBusiness) return;
+
+    const fetchPendingCount = async () => {
+      const { count } = await (supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", activeBusiness.id) as any)
+        .eq("payment_status", "pending");
+      setPendingCount(count || 0);
+    };
+
+    fetchPendingCount();
+
+    const channel = supabase
+      .channel(`pending-count-${activeBusiness.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "transactions", filter: `business_id=eq.${activeBusiness.id}` },
+        () => fetchPendingCount()
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [activeBusiness]);
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -85,6 +112,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
         <nav className="flex-1 p-3 space-y-1">
           {navItems.map(({ to, icon: Icon, label }) => {
             const active = location.pathname === to;
+            const badge = to === "/transactions" && pendingCount > 0 ? pendingCount : undefined;
             return (
               <Link
                 key={to}
@@ -98,6 +126,11 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
               >
                 <Icon className={`w-4 h-4 ${active ? "text-primary" : ""}`} />
                 {label}
+                {badge !== undefined && (
+                  <span className="ml-auto text-[10px] bg-chart-debit/20 text-chart-debit border border-chart-debit/30 px-1.5 py-0.5 rounded-full font-mono">
+                    {badge}
+                  </span>
+                )}
               </Link>
             );
           })}

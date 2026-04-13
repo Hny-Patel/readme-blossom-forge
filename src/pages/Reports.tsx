@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useBusiness } from "@/hooks/useBusiness";
 import { useCrypto } from "@/hooks/useCrypto";
@@ -59,8 +59,9 @@ const Reports = () => {
     fetchSelects();
   }, [activeBusiness]);
 
-  const fetchReports = async () => {
+  const fetchReports = useCallback(async (overrideFilters?: ReportFilters) => {
     if (!activeBusiness || !isUnlocked || !dek) return;
+    const activeFilters = overrideFilters ?? filters;
     setLoading(true);
 
     let query = supabase
@@ -69,12 +70,12 @@ const Reports = () => {
       .eq("business_id", activeBusiness.id)
       .order("transaction_date", { ascending: false });
 
-    if (filters.dateFrom) query = query.gte("transaction_date", filters.dateFrom);
-    if (filters.dateTo) query = query.lte("transaction_date", filters.dateTo);
-    if (filters.type !== "all") query = query.eq("type", filters.type);
-    if (filters.accountId !== "all") query = query.eq("account_id", filters.accountId);
-    if (filters.categoryId !== "all") query = query.eq("category_id", filters.categoryId);
-    if (filters.paymentMethod !== "all") query = query.eq("payment_method", filters.paymentMethod);
+    if (activeFilters.dateFrom) query = query.gte("transaction_date", activeFilters.dateFrom);
+    if (activeFilters.dateTo) query = query.lte("transaction_date", activeFilters.dateTo);
+    if (activeFilters.type !== "all") query = query.eq("type", activeFilters.type);
+    if (activeFilters.accountId !== "all") query = query.eq("account_id", activeFilters.accountId);
+    if (activeFilters.categoryId !== "all") query = query.eq("category_id", activeFilters.categoryId);
+    if (activeFilters.paymentMethod !== "all") query = query.eq("payment_method", activeFilters.paymentMethod);
 
     const { data } = await query;
     const txs = data || [];
@@ -108,29 +109,29 @@ const Reports = () => {
       count: decryptedTxs.length
     });
     setLoading(false);
-  };
+  }, [activeBusiness, dek, isUnlocked, filters]);
 
   const handleApplyFilters = () => {
     fetchReports();
   };
 
   const handleResetFilters = () => {
-    setFilters({
+    const cleared: ReportFilters = {
       dateFrom: "",
       dateTo: "",
       accountId: "all",
       categoryId: "all",
       type: "all",
       paymentMethod: "all",
-    });
-    // Let the next render handle this or just call manually
-    // Will just set state, user clicks Apply again, or we call fetchReports() here but state updates async
+    };
+    setFilters(cleared);
+    fetchReports(cleared);
   };
   
   // Also fetch automatically when they first load
   useEffect(() => {
     fetchReports();
-  }, [activeBusiness, dek, isUnlocked]);
+  }, [fetchReports]);
 
   const exportCSV = () => {
     const headers = ['Date','Party','Type','Payment','Category','Amount','Notes'];

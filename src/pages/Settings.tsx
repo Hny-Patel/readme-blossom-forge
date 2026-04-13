@@ -4,8 +4,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/useBusiness";
 import { useCrypto } from "@/hooks/useCrypto";
 import { supabase } from "@/integrations/supabase/client";
-import { decryptField } from "@/lib/crypto";
+import { decryptField, encryptField } from "@/lib/crypto";
 import { deriveKEK, unwrapDEK, wrapDEK, fromBase64, toBase64 } from "@/lib/crypto";
+import { logAudit } from "@/lib/audit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,7 +46,13 @@ const Settings = () => {
   const handleCreateBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    const { error } = await supabase.from("businesses").insert({ ...form, user_id: user.id });
+    const payload: Record<string, any> = { ...form, user_id: user.id };
+    if (dek) {
+      const { ciphertext: name_enc, iv: name_iv } = await encryptField(form.name, dek);
+      payload.name_enc = name_enc;
+      payload.name_iv = name_iv;
+    }
+    const { error } = await supabase.from("businesses").insert(payload as any);
     if (error) { toast.error(error.message); return; }
     toast.success("Business created");
     setDialogOpen(false);
@@ -103,6 +110,7 @@ const Settings = () => {
       await supabase.auth.updateUser({ password: data.newPassword });
 
       toast.success("Password changed. Please log in again.");
+      logAudit(user.id, "PASSWORD_CHANGE");
       reset();
       lockVault();
       await signOut();
@@ -155,6 +163,7 @@ const Settings = () => {
       a.download = `vaultledger-backup-${format(new Date(), "yyyy-MM-dd")}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
+      logAudit(user.id, "DATA_EXPORT");
       toast.success("Export downloaded");
     } catch {
       toast.error("Export failed");

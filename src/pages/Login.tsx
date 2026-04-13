@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Shield, Lock, Mail, KeyRound, ArrowLeft, AlertTriangle } from "lucide-react";
+import { logAudit } from "@/lib/audit";
 
 type LoginView = 'login' | 'recovery' | 'new-recovery-key' | 'forgot-password';
 
@@ -39,6 +40,7 @@ const Login = () => {
 
     try {
       await unlockVault(password, data.user.id);
+      logAudit(data.user.id, "LOGIN");
       navigate("/");
     } catch (vaultError) {
       if (vaultError instanceof VaultError && vaultError.code === 'NO_KEY_ROW') {

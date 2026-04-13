@@ -19,6 +19,7 @@ import Analytics from "./pages/Analytics";
 import Reports from "./pages/Reports";
 import AccountDetail from "./pages/AccountDetail";
 import NotFound from "./pages/NotFound";
+import Onboarding from "@/components/Onboarding";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <CryptoProvider>
+          <Onboarding />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />

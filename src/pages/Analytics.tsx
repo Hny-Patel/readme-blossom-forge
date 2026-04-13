@@ -16,7 +16,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
+  Legend,  // used by BarChart
 } from "recharts";
 import { format, subDays, eachDayOfInterval } from "date-fns";
 import { ArrowUpRight, ArrowDownLeft, Target, TrendingUp } from "lucide-react";
@@ -62,13 +62,14 @@ const Analytics = () => {
 
       // --- c. Running Balance (all time) ---
       let balance = 0;
+      const seen: Record<string, number> = {};
       const rbData = decryptedTxs.map((tx) => {
         if (tx.type === "credit") balance += tx.amount;
         else balance -= tx.amount;
-        return {
-          date: format(new Date(tx.transaction_date), "dd MMM yy"),
-          balance,
-        };
+        const dateStr = format(new Date(tx.transaction_date), "dd MMM yy");
+        seen[dateStr] = (seen[dateStr] || 0) + 1;
+        const label = seen[dateStr] > 1 ? `${dateStr} #${seen[dateStr]}` : dateStr;
+        return { date: label, balance };
       });
       setRunningBalanceData(rbData);
 
@@ -87,7 +88,7 @@ const Analytics = () => {
       daysArray.forEach((d) => (dailyCache[d] = { credit: 0, debit: 0 }));
 
       txsInLast30Days.forEach((tx) => {
-        const d = tx.transaction_date;
+        const d = format(new Date(tx.transaction_date), "yyyy-MM-dd");
         if (dailyCache[d]) {
           if (tx.type === "credit") dailyCache[d].credit += tx.amount;
           else dailyCache[d].debit += tx.amount;
@@ -104,7 +105,7 @@ const Analytics = () => {
       // --- d. Stats This Month ---
       const currentMonthStr = format(new Date(), "yyyy-MM");
       const thisMonthTxs = decryptedTxs.filter((tx) =>
-        tx.transaction_date.startsWith(currentMonthStr)
+        format(new Date(tx.transaction_date), "yyyy-MM") === currentMonthStr
       );
 
       let totalIncome = 0;
@@ -125,13 +126,13 @@ const Analytics = () => {
 
       // --- b. Category Breakdown (expense only) ---
       const expenseTxs = decryptedTxs.filter((tx) => tx.type === "debit");
-      const catMap: Record<string, { value: number; color: string; name: string }> = {};
+      const catMap: Record<string, { value: number; color: string; fill: string; name: string }> = {};
 
       expenseTxs.forEach((tx) => {
         const catName = tx.categories?.name || "Uncategorized";
         const catColor = tx.categories?.color || "#9CA3AF";
         if (!catMap[catName]) {
-          catMap[catName] = { name: catName, value: 0, color: catColor };
+          catMap[catName] = { name: catName, value: 0, color: catColor, fill: catColor };
         }
         catMap[catName].value += tx.amount;
       });
@@ -217,7 +218,7 @@ const Analytics = () => {
             <BarChart data={last30DaysData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
               <XAxis dataKey="date" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} tickMargin={10} minTickGap={20} />
-              <YAxis tickFormatter={(val) => `₹${val>=1000 ? (val/1000).toFixed(0)+'k' : val}`} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+              <YAxis tickFormatter={(val) => { if (val >= 100000) return `₹${(val/100000).toFixed(1)}L`; if (val >= 1000) return `₹${(val/1000).toFixed(0)}k`; return `₹${val}`; }} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
               <Tooltip
                 contentStyle={{ backgroundColor: "hsl(var(--background))", borderRadius: "8px", border: "1px solid hsl(var(--border))" }}
                 formatter={(value: number) => [`₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, undefined]}
@@ -238,7 +239,7 @@ const Analytics = () => {
               <LineChart data={runningBalanceData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis dataKey="date" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} minTickGap={30} />
-                <YAxis tickFormatter={(val) => `₹${val>=1000 ? (val/1000).toFixed(0)+'k' : val}`} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                <YAxis tickFormatter={(val) => { if (val >= 100000) return `₹${(val/100000).toFixed(1)}L`; if (val >= 1000) return `₹${(val/1000).toFixed(0)}k`; return `₹${val}`; }} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
                 <Tooltip
                   contentStyle={{ backgroundColor: "hsl(var(--background))", borderRadius: "8px", border: "1px solid hsl(var(--border))" }}
                   formatter={(value: number) => [`₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, "Balance"]}
@@ -252,29 +253,39 @@ const Analytics = () => {
         <div className="glass-card p-4 md:p-6 space-y-4">
           <h2 className="text-lg font-semibold">Expense Breakdown (All Time)</h2>
           {categoryData.length > 0 ? (
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "hsl(var(--background))", borderRadius: "8px", border: "1px solid hsl(var(--border))" }}
-                    formatter={(value: number) => [`₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, undefined]}
-                  />
-                  <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "12px" }} />
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color || "#9CA3AF"} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+            <div>
+              <div className="h-[260px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "hsl(var(--background))", borderRadius: "8px", border: "1px solid hsl(var(--border))" }}
+                      formatter={(value: number) => [`₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, undefined]}
+                    />
+                    <Pie
+                      data={categoryData}
+                      cx="35%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={85}
+                      paddingAngle={2}
+                      dataKey="value"
+                      nameKey="name"
+                    >
+                      {categoryData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color || "#9CA3AF"} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "12px", justifyContent: "center" }}>
+                {categoryData.map((entry, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px" }}>
+                    <div style={{ width: "10px", height: "10px", borderRadius: "2px", background: entry.color || "#9CA3AF", flexShrink: 0 }} />
+                    <span style={{ color: "rgba(255,255,255,0.75)" }}>{entry.name}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">

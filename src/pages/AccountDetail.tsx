@@ -131,22 +131,22 @@ const AccountDetail = () => {
       }
     }
 
-    const { data: tx, error } = await supabase.from("transactions").insert({
-      user_id: user.id, business_id: activeBusiness.id, account_id: id,
-      type: form.type, amount, payment_method: form.payment_method,
-      notes: form.notes || null, category_id: form.category_id || null,
-      transaction_date: form.transaction_date, ...encFields,
-    }).select().single();
-    if (error) { toast.error(error.message); return; }
-
-    const debitAcc = form.type === "debit" ? "5000" : "1000";
-    const creditAcc = form.type === "debit" ? "1000" : "4000";
-    await supabase.from("journal_entries").insert({
-      user_id: user.id, transaction_id: tx.id,
-      debit_account: debitAcc, credit_account: creditAcc,
-      amount, description: form.notes || `${form.type} transaction`,
-      entry_date: form.transaction_date,
+    const { error } = await (supabase as any).rpc("create_transaction", {
+      p_user_id: user.id,
+      p_business_id: activeBusiness.id,
+      p_account_id: id,
+      p_type: form.type,
+      p_payment_method: form.payment_method,
+      p_amount: amount,
+      p_amount_enc: encFields.amount_enc || null,
+      p_amount_iv: encFields.amount_iv || null,
+      p_notes: form.notes || null,
+      p_notes_enc: encFields.notes_enc || null,
+      p_notes_iv: encFields.notes_iv || null,
+      p_category_id: form.category_id || null,
+      p_transaction_date: form.transaction_date,
     });
+    if (error) { toast.error(error.message); return; }
 
     toast.success("Transaction added");
     setForm({ type: "credit", amount: "", category_id: "", payment_method: "cash", notes: "", transaction_date: new Date().toISOString().split("T")[0] });

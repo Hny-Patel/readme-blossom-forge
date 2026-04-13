@@ -22,9 +22,10 @@ const Dashboard = () => {
   const [recentTxns, setRecentTxns] = useState<any[]>([]);
   const [miniChart, setMiniChart] = useState<{ date: string; credit: number; debit: number }[]>([]);
   const [topAccounts, setTopAccounts] = useState<{ name: string; volume: number; net: number }[]>([]);
+  const [pendingDues, setPendingDues] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!activeBusiness) return;
+    if (!activeBusiness || !dek) return;
     const run = async () => {
       setLoading(true);
       const [txRes, accRes] = await Promise.all([
@@ -84,10 +85,21 @@ const Dashboard = () => {
         .slice(0, 5);
       setTopAccounts(sorted);
 
+      // Pending dues
+      const pending = txns
+        .filter((t) => t.payment_status === "pending")
+        .sort((a, b) => new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime());
+      setPendingDues(pending);
+
       setLoading(false);
     };
     run();
   }, [activeBusiness, dek]);
+
+  const markPaid = async (txId: string) => {
+    await supabase.from("transactions").update({ payment_status: "paid" }).eq("id", txId);
+    setPendingDues((prev) => prev.filter((t) => t.id !== txId));
+  };
 
   if (!activeBusiness) {
     return (
@@ -227,6 +239,52 @@ const Dashboard = () => {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Pending Dues */}
+      <div className="glass-card">
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <h2 className="font-semibold">Pending Dues</h2>
+          {!loading && pendingDues.length > 0 && (
+            <span className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-full font-mono">
+              {pendingDues.length} pending
+            </span>
+          )}
+        </div>
+        {loading ? (
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
+          </div>
+        ) : pendingDues.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">No pending dues 🎉</div>
+        ) : (
+          <div className="divide-y divide-border">
+            {pendingDues.map((tx) => {
+              const txDate = new Date(tx.transaction_date);
+              const daysAgo = Math.floor((Date.now() - txDate.getTime()) / (1000 * 60 * 60 * 24));
+              const isOverdue = daysAgo > 7;
+              return (
+                <div key={tx.id} className="flex items-center justify-between p-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{tx.accounts?.name || "—"}</p>
+                    <p className={`text-xs mt-0.5 ${isOverdue ? "text-chart-debit" : "text-muted-foreground"}`}>
+                      {format(txDate, "dd MMM yyyy")} · {daysAgo === 0 ? "Today" : `${daysAgo}d ago`}
+                      {isOverdue && " · Overdue"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3">
+                    <span className={`font-mono text-sm font-semibold ${tx.type === "credit" ? "text-chart-credit" : "text-chart-debit"}`}>
+                      {tx.type === "credit" ? "+" : "-"}₹{Number(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </span>
+                    <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => markPaid(tx.id)}>
+                      Mark Paid
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
