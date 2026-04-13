@@ -1,26 +1,37 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+
+const PAGE_SIZE = 20;
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/useBusiness";
+import { useCrypto } from "@/hooks/useCrypto";
+import { encryptField, decryptField } from "@/lib/crypto";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, ArrowDownLeft, ArrowUpRight, Search, Trash2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Plus, ArrowDownLeft, ArrowUpRight, Search, Trash2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
 const Transactions = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { activeBusiness } = useBusiness();
+  const { dek, isUnlocked } = useCrypto();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [form, setForm] = useState({
     type: "credit",
     amount: "",
@@ -31,20 +42,60 @@ const Transactions = () => {
     transaction_date: new Date().toISOString().split("T")[0],
   });
 
-  const fetch = async () => {
+  const fetchData = useCallback(async () => {
     if (!activeBusiness) return;
+    setLoading(true);
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
     const [txRes, accRes, catRes] = await Promise.all([
-      supabase.from("transactions").select("*, accounts(name), categories(name, color)").eq("business_id", activeBusiness.id).order("transaction_date", { ascending: false }),
+      supabase
+        .from("transactions")
+        .select("*, accounts(name), categories(name, color)", { count: "exact" })
+        .eq("business_id", activeBusiness.id)
+        .order("transaction_date", { ascending: false })
+        .range(from, to),
       supabase.from("accounts").select("id, name, type").eq("business_id", activeBusiness.id).order("name"),
       supabase.from("categories").select("id, name, type, color").order("name"),
     ]);
-    setTransactions(txRes.data || []);
+
+    const rawTxs = txRes.data || [];
+
+    // Decrypt encrypted rows; fall back to plaintext for old rows
+    const decrypted = await Promise.all(
+      rawTxs.map(async (tx) => {
+        let amount = Number(tx.amount);
+        let notes = tx.notes as string | null;
+        let encrypted = false;
+
+        if (tx.amount_enc && tx.amount_iv && dek) {
+          try {
+            amount = parseFloat(await decryptField(tx.amount_enc, tx.amount_iv, dek));
+            encrypted = true;
+          } catch {
+            // DEK mismatch — leave as plaintext
+          }
+        }
+        if (tx.notes_enc && tx.notes_iv && dek) {
+          try {
+            notes = await decryptField(tx.notes_enc, tx.notes_iv, dek);
+          } catch {
+            // leave as plaintext
+          }
+        }
+
+        return { ...tx, amount, notes, _encrypted: encrypted };
+      })
+    );
+
+    setTransactions(decrypted);
+    setTotalCount(txRes.count || 0);
     setAccounts(accRes.data || []);
     setCategories(catRes.data || []);
     setLoading(false);
-  };
+  }, [activeBusiness, dek, page]);
 
-  useEffect(() => { fetch(); }, [activeBusiness]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,16 +103,28 @@ const Transactions = () => {
     const amount = parseFloat(form.amount);
     if (isNaN(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
 
+    let encryptedFields: Record<string, string> = {};
+    if (dek) {
+      const { ciphertext: amount_enc, iv: amount_iv } = await encryptField(amount.toString(), dek);
+      encryptedFields = { amount_enc, amount_iv };
+
+      if (form.notes) {
+        const { ciphertext: notes_enc, iv: notes_iv } = await encryptField(form.notes, dek);
+        encryptedFields = { ...encryptedFields, notes_enc, notes_iv };
+      }
+    }
+
     const txPayload = {
       user_id: user.id,
       business_id: activeBusiness.id,
       type: form.type,
-      amount,
+      amount,                          // kept for backward compat during migration period
       account_id: form.account_id || null,
       category_id: form.category_id || null,
       payment_method: form.payment_method,
-      notes: form.notes || null,
+      notes: form.notes || null,       // kept for backward compat
       transaction_date: form.transaction_date,
+      ...encryptedFields,
     };
 
     const { data: tx, error } = await supabase.from("transactions").insert(txPayload).select().single();
@@ -83,14 +146,14 @@ const Transactions = () => {
     toast.success("Transaction created");
     setForm({ type: "credit", amount: "", account_id: "", category_id: "", payment_method: "cash", notes: "", transaction_date: new Date().toISOString().split("T")[0] });
     setDialogOpen(false);
-    fetch();
+    fetchData();
   };
 
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from("transactions").delete().eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Transaction deleted");
-    fetch();
+    fetchData();
   };
 
   const filtered = transactions.filter((t) =>
@@ -102,6 +165,18 @@ const Transactions = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {!isUnlocked && (
+        <Alert variant="destructive">
+          <Lock className="w-4 h-4" />
+          <AlertDescription className="flex items-center justify-between">
+            <span>Vault is locked. Amounts cannot be decrypted.</span>
+            <Button size="sm" variant="outline" onClick={() => navigate("/login")}>
+              Log in again
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transactions</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -178,7 +253,9 @@ const Transactions = () => {
       </div>
 
       {loading ? (
-        <div className="text-center text-muted-foreground p-8">Loading...</div>
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center text-muted-foreground p-8">No transactions found.</div>
       ) : (
@@ -190,7 +267,10 @@ const Transactions = () => {
                   {tx.type === "credit" ? <ArrowDownLeft className="w-4 h-4 text-chart-credit" /> : <ArrowUpRight className="w-4 h-4 text-chart-debit" />}
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{tx.accounts?.name || "—"}</p>
+                  <p
+                    className={`text-sm font-medium ${tx.account_id ? "cursor-pointer hover:text-primary transition-colors" : ""}`}
+                    onClick={() => tx.account_id && navigate(`/accounts/${tx.account_id}`)}
+                  >{tx.accounts?.name || "—"}</p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span>{format(new Date(tx.transaction_date), "dd MMM yyyy")}</span>
                     <span>•</span>
@@ -205,16 +285,32 @@ const Transactions = () => {
                   {tx.notes && <p className="text-xs text-muted-foreground mt-0.5">{tx.notes}</p>}
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                {tx._encrypted && (
+                  <Lock className="w-3 h-3 text-muted-foreground/50" title="Encrypted" />
+                )}
                 <span className={`font-mono font-semibold ${tx.type === "credit" ? "text-chart-credit" : "text-chart-debit"}`}>
                   {tx.type === "credit" ? "+" : "-"}₹{Number(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                 </span>
-                <button onClick={() => handleDelete(tx.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                <button onClick={() => handleDelete(tx.id)} className="text-muted-foreground hover:text-destructive transition-colors ml-1">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalCount > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous</Button>
+            <Button variant="outline" size="sm" disabled={(page + 1) * PAGE_SIZE >= totalCount} onClick={() => setPage(p => p + 1)}>Next</Button>
+          </div>
         </div>
       )}
     </div>

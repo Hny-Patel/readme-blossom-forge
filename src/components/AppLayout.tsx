@@ -1,26 +1,15 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/useBusiness";
+import { useCrypto } from "@/hooks/useCrypto";
+import { startInactivityTimer } from "@/lib/session";
 import {
-  LayoutDashboard,
-  Users,
-  ArrowLeftRight,
-  Tag,
-  Settings,
-  LogOut,
-  Shield,
-  Menu,
-  X,
-  ChevronDown,
-  Building2,
+  LayoutDashboard, Users, ArrowLeftRight, Tag, Settings, LogOut,
+  Shield, Menu, X, ChevronDown, Building2, BarChart2, FileText, Lock,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
 const navItems = [
@@ -28,14 +17,26 @@ const navItems = [
   { to: "/accounts", icon: Users, label: "Accounts" },
   { to: "/transactions", icon: ArrowLeftRight, label: "Transactions" },
   { to: "/categories", icon: Tag, label: "Categories" },
+  { to: "/analytics", icon: BarChart2, label: "Analytics" },
+  { to: "/reports", icon: FileText, label: "Reports" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, signOut } = useAuth();
   const { businesses, activeBusiness, setActiveBusiness } = useBusiness();
+  const { isUnlocked, lockVault } = useCrypto();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Auto-logout after 30 min inactivity
+  useEffect(() => {
+    const cleanup = startInactivityTimer(() => {
+      lockVault();
+      signOut();
+    });
+    return cleanup;
+  }, []);
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -102,8 +103,17 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           })}
         </nav>
 
-        <div className="p-3 border-t border-sidebar-border">
-          <div className="px-3 py-2 text-xs text-muted-foreground truncate mb-2">
+        <div className="p-3 border-t border-sidebar-border space-y-2">
+          {/* Vault status indicator */}
+          <div className="flex items-center gap-2 px-3 py-1.5">
+            <div className={`w-2 h-2 rounded-full ${isUnlocked ? "bg-chart-credit" : "bg-amber-400"}`} />
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Lock className="w-3 h-3" />
+              {isUnlocked ? "Vault Encrypted" : "Vault Locked"}
+            </span>
+          </div>
+
+          <div className="px-3 py-1 text-xs text-muted-foreground truncate">
             {user?.email}
           </div>
           <button

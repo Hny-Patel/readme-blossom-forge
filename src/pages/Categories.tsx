@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Tag, Trash2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface Category {
@@ -23,6 +24,8 @@ const Categories = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ name: "", type: "expense", color: "#10B981" });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", color: "" });
 
   const fetchCategories = async () => {
     const { data } = await supabase.from("categories").select("*").order("type").order("name");
@@ -47,6 +50,23 @@ const Categories = () => {
     const { error } = await supabase.from("categories").delete().eq("id", id);
     if (error) { toast.error(error.message); return; }
     toast.success("Category deleted");
+    fetchCategories();
+  };
+
+  const startEdit = (cat: Category) => {
+    setEditingId(cat.id);
+    setEditForm({ name: cat.name, color: cat.color || "#888" });
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  const saveEdit = async (id: string) => {
+    const { error } = await supabase.from("categories").update({
+      name: editForm.name, color: editForm.color,
+    }).eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Category updated");
+    setEditingId(null);
     fetchCategories();
   };
 
@@ -95,32 +115,72 @@ const Categories = () => {
       </div>
 
       {loading ? (
-        <div className="text-center text-muted-foreground p-8">Loading...</div>
+        <div className="space-y-6">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i}>
+              <Skeleton className="h-4 w-24 mb-3" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Array.from({ length: 3 }).map((_, j) => <Skeleton key={j} className="h-12 rounded-xl" />)}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="space-y-6">
-          {["income", "expense", "asset", "liability"].map((type) => (
+          {["income", "expense", "asset", "liability"].map((type) =>
             grouped[type] && (
               <div key={type}>
                 <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3 capitalize">{type}</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {grouped[type].map((cat) => (
-                    <div key={cat.id} className="glass-card p-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color || "#888" }} />
-                        <span className="text-sm font-medium">{cat.name}</span>
-                        {cat.is_default && <span className="text-xs text-muted-foreground">(default)</span>}
-                      </div>
-                      {!cat.is_default && (
-                        <button onClick={() => handleDelete(cat.id)} className="text-muted-foreground hover:text-destructive transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                    <div key={cat.id} className="glass-card p-3">
+                      {editingId === cat.id ? (
+                        // Inline edit form
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={editForm.name}
+                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                            className="h-7 text-sm flex-1"
+                            autoFocus
+                          />
+                          <Input
+                            type="color"
+                            value={editForm.color}
+                            onChange={(e) => setEditForm({ ...editForm, color: e.target.value })}
+                            className="h-7 w-10 p-0.5"
+                          />
+                          <button onClick={() => saveEdit(cat.id)} className="text-chart-credit hover:opacity-80">
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button onClick={cancelEdit} className="text-muted-foreground hover:text-foreground">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color || "#888" }} />
+                            <span className="text-sm font-medium">{cat.name}</span>
+                            {cat.is_default && <span className="text-xs text-muted-foreground">(default)</span>}
+                          </div>
+                          {!cat.is_default && (
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => startEdit(cat)} className="text-muted-foreground hover:text-foreground transition-colors">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => handleDelete(cat.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
                 </div>
               </div>
             )
-          ))}
+          )}
         </div>
       )}
     </div>

@@ -19,10 +19,18 @@ export type Database = {
           business_id: string
           created_at: string
           email: string | null
+          email_enc: string | null
+          email_iv: string | null
           id: string
           name: string
+          name_enc: string | null
+          name_iv: string | null
           notes: string | null
+          notes_enc: string | null
+          notes_iv: string | null
           phone: string | null
+          phone_enc: string | null
+          phone_iv: string | null
           type: string
           updated_at: string
           user_id: string
@@ -31,10 +39,18 @@ export type Database = {
           business_id: string
           created_at?: string
           email?: string | null
+          email_enc?: string | null
+          email_iv?: string | null
           id?: string
           name: string
+          name_enc?: string | null
+          name_iv?: string | null
           notes?: string | null
+          notes_enc?: string | null
+          notes_iv?: string | null
           phone?: string | null
+          phone_enc?: string | null
+          phone_iv?: string | null
           type: string
           updated_at?: string
           user_id: string
@@ -43,10 +59,18 @@ export type Database = {
           business_id?: string
           created_at?: string
           email?: string | null
+          email_enc?: string | null
+          email_iv?: string | null
           id?: string
           name?: string
+          name_enc?: string | null
+          name_iv?: string | null
           notes?: string | null
+          notes_enc?: string | null
+          notes_iv?: string | null
           phone?: string | null
+          phone_enc?: string | null
+          phone_iv?: string | null
           type?: string
           updated_at?: string
           user_id?: string
@@ -91,30 +115,48 @@ export type Database = {
       businesses: {
         Row: {
           address: string | null
+          address_enc: string | null
+          address_iv: string | null
           created_at: string
           gstin: string | null
+          gstin_enc: string | null
+          gstin_iv: string | null
           id: string
           name: string
+          name_enc: string | null
+          name_iv: string | null
           type: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           address?: string | null
+          address_enc?: string | null
+          address_iv?: string | null
           created_at?: string
           gstin?: string | null
+          gstin_enc?: string | null
+          gstin_iv?: string | null
           id?: string
           name: string
+          name_enc?: string | null
+          name_iv?: string | null
           type?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           address?: string | null
+          address_enc?: string | null
+          address_iv?: string | null
           created_at?: string
           gstin?: string | null
+          gstin_enc?: string | null
+          gstin_iv?: string | null
           id?: string
           name?: string
+          name_enc?: string | null
+          name_iv?: string | null
           type?: string | null
           updated_at?: string
           user_id?: string
@@ -226,11 +268,15 @@ export type Database = {
         Row: {
           account_id: string | null
           amount: number
+          amount_enc: string | null
+          amount_iv: string | null
           business_id: string
           category_id: string | null
           created_at: string
           id: string
           notes: string | null
+          notes_enc: string | null
+          notes_iv: string | null
           payment_method: string | null
           transaction_date: string
           type: string
@@ -240,11 +286,15 @@ export type Database = {
         Insert: {
           account_id?: string | null
           amount: number
+          amount_enc?: string | null
+          amount_iv?: string | null
           business_id: string
           category_id?: string | null
           created_at?: string
           id?: string
           notes?: string | null
+          notes_enc?: string | null
+          notes_iv?: string | null
           payment_method?: string | null
           transaction_date?: string
           type: string
@@ -254,11 +304,15 @@ export type Database = {
         Update: {
           account_id?: string | null
           amount?: number
+          amount_enc?: string | null
+          amount_iv?: string | null
           business_id?: string
           category_id?: string | null
           created_at?: string
           id?: string
           notes?: string | null
+          notes_enc?: string | null
+          notes_iv?: string | null
           payment_method?: string | null
           transaction_date?: string
           type?: string
@@ -288,6 +342,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_keys: {
+        Row: {
+          id: string
+          user_id: string
+          encrypted_dek: string
+          dek_iv: string
+          pbkdf2_salt: string
+          recovery_encrypted_dek: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          encrypted_dek: string
+          dek_iv: string
+          pbkdf2_salt: string
+          recovery_encrypted_dek?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          encrypted_dek?: string
+          dek_iv?: string
+          pbkdf2_salt?: string
+          recovery_encrypted_dek?: string | null
+          created_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {

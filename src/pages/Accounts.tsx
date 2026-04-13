@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/useBusiness";
+import { useCrypto } from "@/hooks/useCrypto";
+import { encryptField, decryptField } from "@/lib/crypto";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Users, Phone, Mail, Trash2, Search } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 interface Account {
@@ -21,8 +25,10 @@ interface Account {
 }
 
 const Accounts = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { activeBusiness } = useBusiness();
+  const { dek } = useCrypto();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -31,25 +37,82 @@ const Accounts = () => {
 
   const fetchAccounts = async () => {
     if (!activeBusiness) return;
+    setLoading(true);
     const { data } = await supabase
       .from("accounts")
       .select("*")
       .eq("business_id", activeBusiness.id)
       .order("name");
-    setAccounts(data || []);
+
+    const decrypted: Account[] = await Promise.all(
+      (data || []).map(async (row) => {
+        let name = row.name;
+        let phone = row.phone;
+        let email = row.email;
+        let notes = row.notes;
+
+        if (dek) {
+          if (row.name_enc && row.name_iv) {
+            try { name = await decryptField(row.name_enc, row.name_iv, dek); } catch { /* fallback */ }
+          }
+          if (row.phone_enc && row.phone_iv) {
+            try { phone = await decryptField(row.phone_enc, row.phone_iv, dek); } catch { /* fallback */ }
+          }
+          if (row.email_enc && row.email_iv) {
+            try { email = await decryptField(row.email_enc, row.email_iv, dek); } catch { /* fallback */ }
+          }
+          if (row.notes_enc && row.notes_iv) {
+            try { notes = await decryptField(row.notes_enc, row.notes_iv, dek); } catch { /* fallback */ }
+          }
+        }
+
+        return { id: row.id, type: row.type, name, phone, email, notes };
+      })
+    );
+
+    setAccounts(decrypted);
     setLoading(false);
   };
 
-  useEffect(() => { fetchAccounts(); }, [activeBusiness]);
+  useEffect(() => { fetchAccounts(); }, [activeBusiness, dek]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !activeBusiness) return;
-    const { error } = await supabase.from("accounts").insert({
-      ...form,
+
+    const payload: Record<string, string | null> = {
       user_id: user.id,
       business_id: activeBusiness.id,
-    });
+      type: form.type,
+      name: form.name,
+      phone: form.phone || null,
+      email: form.email || null,
+      notes: form.notes || null,
+    };
+
+    if (dek) {
+      const { ciphertext: name_enc, iv: name_iv } = await encryptField(form.name, dek);
+      payload.name_enc = name_enc;
+      payload.name_iv = name_iv;
+
+      if (form.phone) {
+        const { ciphertext: phone_enc, iv: phone_iv } = await encryptField(form.phone, dek);
+        payload.phone_enc = phone_enc;
+        payload.phone_iv = phone_iv;
+      }
+      if (form.email) {
+        const { ciphertext: email_enc, iv: email_iv } = await encryptField(form.email, dek);
+        payload.email_enc = email_enc;
+        payload.email_iv = email_iv;
+      }
+      if (form.notes) {
+        const { ciphertext: notes_enc, iv: notes_iv } = await encryptField(form.notes, dek);
+        payload.notes_enc = notes_enc;
+        payload.notes_iv = notes_iv;
+      }
+    }
+
+    const { error } = await supabase.from("accounts").insert(payload as any);
     if (error) { toast.error(error.message); return; }
     toast.success("Account created");
     setForm({ name: "", type: "customer", phone: "", email: "", notes: "" });
@@ -64,6 +127,7 @@ const Accounts = () => {
     fetchAccounts();
   };
 
+  // Search works on decrypted names (already resolved in state)
   const filtered = accounts.filter((a) =>
     a.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -123,13 +187,19 @@ const Accounts = () => {
       </div>
 
       {loading ? (
-        <div className="text-center text-muted-foreground p-8">Loading...</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center text-muted-foreground p-8">No accounts found.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((account) => (
-            <div key={account.id} className="glass-card p-4 space-y-3 animate-slide-up">
+            <div
+              key={account.id}
+              className="glass-card p-4 space-y-3 animate-slide-up cursor-pointer hover:border-primary/40 transition-colors"
+              onClick={() => navigate(`/accounts/${account.id}`)}
+            >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
@@ -142,7 +212,10 @@ const Accounts = () => {
                     </span>
                   </div>
                 </div>
-                <button onClick={() => handleDelete(account.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(account.id); }}
+                  className="text-muted-foreground hover:text-destructive transition-colors"
+                >
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
