@@ -3,10 +3,28 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import NotFound from "./pages/NotFound.tsx";
+import { AuthProvider } from "@/hooks/useAuth";
+import { BusinessProvider } from "@/hooks/useBusiness";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import AppLayout from "@/components/AppLayout";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import Dashboard from "./pages/Dashboard";
+import Accounts from "./pages/Accounts";
+import Transactions from "./pages/Transactions";
+import Categories from "./pages/Categories";
+import Settings from "./pages/Settings";
+import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+const ProtectedApp = ({ children }: { children: React.ReactNode }) => (
+  <ProtectedRoute>
+    <BusinessProvider>
+      <AppLayout>{children}</AppLayout>
+    </BusinessProvider>
+  </ProtectedRoute>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -14,11 +32,18 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/" element={<ProtectedApp><Dashboard /></ProtectedApp>} />
+            <Route path="/accounts" element={<ProtectedApp><Accounts /></ProtectedApp>} />
+            <Route path="/transactions" element={<ProtectedApp><Transactions /></ProtectedApp>} />
+            <Route path="/categories" element={<ProtectedApp><Categories /></ProtectedApp>} />
+            <Route path="/settings" element={<ProtectedApp><Settings /></ProtectedApp>} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
