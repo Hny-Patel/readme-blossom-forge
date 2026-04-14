@@ -253,23 +253,34 @@ const Analytics = () => {
         <div className="glass-card p-4 md:p-6 space-y-4">
           <h2 className="text-lg font-semibold">Expense Breakdown (All Time)</h2>
           {categoryData.length > 0 ? (
-            <div>
-              <div className="h-[260px] w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+              {/* LEFT: Pie chart, centered properly */}
+              <div style={{ height: "240px" }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Tooltip
-                      contentStyle={{ backgroundColor: "hsl(var(--background))", borderRadius: "8px", border: "1px solid hsl(var(--border))" }}
-                      formatter={(value: number) => [`₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`, undefined]}
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--background))",
+                        borderRadius: "8px",
+                        border: "1px solid hsl(var(--border))",
+                        fontSize: "12px",
+                      }}
+                      formatter={(value: number, name: string) => [
+                        `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
+                        name,
+                      ]}
                     />
                     <Pie
                       data={categoryData}
-                      cx="35%"
+                      cx="50%"
                       cy="50%"
-                      innerRadius={55}
-                      outerRadius={85}
+                      innerRadius={50}
+                      outerRadius={90}
                       paddingAngle={2}
                       dataKey="value"
                       nameKey="name"
+                      label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                      labelLine={true}
                     >
                       {categoryData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color || "#9CA3AF"} />
@@ -278,13 +289,51 @@ const Analytics = () => {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "12px", justifyContent: "center" }}>
-                {categoryData.map((entry, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px" }}>
-                    <div style={{ width: "10px", height: "10px", borderRadius: "2px", background: entry.color || "#9CA3AF", flexShrink: 0 }} />
-                    <span style={{ color: "rgba(255,255,255,0.75)" }}>{entry.name}</span>
-                  </div>
-                ))}
+
+              {/* RIGHT: Legend with amounts */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                  maxHeight: categoryData.length > 5 ? "220px" : "auto",
+                  overflowY: categoryData.length > 5 ? "auto" : "visible",
+                }}
+              >
+                {categoryData.map((entry, i) => {
+                  const total = categoryData.reduce((s, e) => s + e.value, 0);
+                  const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : "0";
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <div
+                        style={{
+                          width: "12px",
+                          height: "12px",
+                          borderRadius: "3px",
+                          background: entry.color || "#9CA3AF",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 500,
+                            color: "var(--foreground, #fff)",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {entry.name}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "hsl(var(--muted-foreground))" }}>
+                          ₹{entry.value.toLocaleString("en-IN", { maximumFractionDigits: 0 })} · {pct}%
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : (
