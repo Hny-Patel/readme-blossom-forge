@@ -259,12 +259,17 @@ const Analytics = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Tooltip
+                      wrapperStyle={{ zIndex: 10, outline: "none" }}
                       contentStyle={{
-                        backgroundColor: "hsl(var(--background))",
+                        backgroundColor: "#1e2229",
                         borderRadius: "8px",
-                        border: "1px solid hsl(var(--border))",
+                        border: "1px solid rgba(255,255,255,0.1)",
                         fontSize: "12px",
+                        color: "#f0f2f8",
+                        padding: "8px 12px",
+                        boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
                       }}
+                      itemStyle={{ color: "#f0f2f8" }}
                       formatter={(value: number, name: string) => [
                         `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`,
                         name,
@@ -279,8 +284,25 @@ const Analytics = () => {
                       paddingAngle={2}
                       dataKey="value"
                       nameKey="name"
-                      label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
-                      labelLine={true}
+                      label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                        const RADIAN = Math.PI / 180;
+                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                        return percent > 0.05 ? (
+                          <text
+                            x={x} y={y}
+                            fill="white"
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            fontSize={12}
+                            fontWeight={600}
+                          >
+                            {`${(percent * 100).toFixed(0)}%`}
+                          </text>
+                        ) : null;
+                      }}
+                      labelLine={false}
                     >
                       {categoryData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color || "#9CA3AF"} />
