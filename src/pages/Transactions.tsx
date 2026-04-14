@@ -63,7 +63,7 @@ const Transactions = () => {
     const [txRes, accRes, catRes] = await Promise.all([
       supabase
         .from("transactions")
-        .select("*, accounts(name), categories(name, color), transfer_account:transfer_to_account_id(name)", { count: "exact" })
+        .select("*, accounts(name), categories(name, color), transfer_account:accounts!transfer_to_account_id(name)", { count: "exact" })
         .eq("business_id", activeBusiness.id)
         .order("transaction_date", { ascending: false })
         .range(from, to),
