@@ -63,7 +63,10 @@ const Transactions = () => {
     const [txRes, accRes, catRes] = await Promise.all([
       supabase
         .from("transactions")
-        .select("*, accounts(name), categories(name, color)", { count: "exact" })
+        // Use explicit FK hint to disambiguate: transactions has TWO FKs to accounts
+        // (account_id and transfer_to_account_id). Without !account_id PostgREST
+        // returns PGRST201 "ambiguous relationship" and data is null.
+        .select("*, accounts!account_id(name), categories(name, color)", { count: "exact" })
         .eq("business_id", activeBusiness.id)
         .order("transaction_date", { ascending: false })
         .range(from, to),
@@ -71,6 +74,10 @@ const Transactions = () => {
       supabase.from("categories").select("id, name, type, color").order("name"),
     ]);
 
+    if (txRes.error) {
+      console.error("Transactions fetch error:", txRes.error);
+      toast.error(`Failed to load transactions: ${txRes.error.message}`);
+    }
     const rawTxs = txRes.data || [];
     const decrypted = await Promise.all(
       rawTxs.map(async (tx) => {

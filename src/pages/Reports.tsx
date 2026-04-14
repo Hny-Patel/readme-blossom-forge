@@ -66,7 +66,7 @@ const Reports = () => {
 
     let query = supabase
       .from("transactions")
-      .select("*, accounts(name), categories(name, color)")
+      .select("*, accounts!account_id(name), categories(name, color)")
       .eq("business_id", activeBusiness.id)
       .order("transaction_date", { ascending: false });
 

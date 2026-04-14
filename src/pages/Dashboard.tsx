@@ -29,7 +29,7 @@ const Dashboard = () => {
     const run = async () => {
       setLoading(true);
       const [txRes, accRes] = await Promise.all([
-        supabase.from("transactions").select("*, accounts(id, name)").eq("business_id", activeBusiness.id).order("transaction_date", { ascending: false }),
+        supabase.from("transactions").select("*, accounts!account_id(id, name)").eq("business_id", activeBusiness.id).order("transaction_date", { ascending: false }),
         supabase.from("accounts").select("id").eq("business_id", activeBusiness.id),
       ]);
 
