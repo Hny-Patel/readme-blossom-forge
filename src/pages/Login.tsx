@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useCrypto, VaultError } from "@/hooks/useCrypto";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,21 @@ type LoginView = 'login' | 'recovery' | 'new-recovery-key' | 'forgot-password';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const vaultLocked = location.state?.vaultLocked === true;
   const { unlockVault, unlockVaultWithRecovery, createVaultKey } = useCrypto();
 
   const [view, setView] = useState<LoginView>('login');
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    if (vaultLocked) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session?.user?.email) setEmail(data.session.user.email);
+      });
+    }
+  }, [vaultLocked]);
   const [recoveryKey, setRecoveryKey] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -314,6 +324,25 @@ const Login = () => {
             <h2 className="text-lg font-semibold">Welcome back</h2>
             <p className="text-sm text-muted-foreground">Sign in to your account</p>
           </div>
+
+          {vaultLocked && (
+            <div style={{
+              display: "flex", gap: "8px", padding: "12px",
+              background: "rgba(245,158,11,0.1)",
+              border: "1px solid rgba(245,158,11,0.3)",
+              borderRadius: "8px", marginBottom: "4px"
+            }}>
+              <span style={{ fontSize: "16px" }}>🔒</span>
+              <div>
+                <p style={{ fontSize: "13px", fontWeight: 500, color: "#f59e0b", margin: 0 }}>
+                  Vault locked
+                </p>
+                <p style={{ fontSize: "11px", color: "rgba(245,158,11,0.7)", margin: 0 }}>
+                  Your session is still active. Enter your password to unlock your vault and continue.
+                </p>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">

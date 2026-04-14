@@ -1,8 +1,10 @@
 import { useAuth } from "@/hooks/useAuth";
+import { useCrypto } from "@/hooks/useCrypto";
 import { Navigate } from "react-router-dom";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
+  const { isUnlocked } = useCrypto();
 
   if (loading) {
     return (
@@ -13,6 +15,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  // User is authenticated but vault is locked (page refresh, inactivity timeout, etc.)
+  // Must re-enter password to derive DEK
+  if (!isUnlocked) return <Navigate to="/login" state={{ vaultLocked: true }} replace />;
 
   return <>{children}</>;
 };

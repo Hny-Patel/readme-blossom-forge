@@ -15,7 +15,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { activeBusiness } = useBusiness();
   const { dek } = useCrypto();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [metrics, setMetrics] = useState({
     totalCredit: 0, totalDebit: 0, netBalance: 0, accountCount: 0,
   });
@@ -87,7 +87,7 @@ const Dashboard = () => {
 
       // Pending dues
       const pending = txns
-        .filter((t) => t.payment_status === "pending")
+        .filter((t) => (t as any).payment_status === "pending")
         .sort((a, b) => new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime());
       setPendingDues(pending);
 
@@ -97,9 +97,24 @@ const Dashboard = () => {
   }, [activeBusiness, dek]);
 
   const markPaid = async (txId: string) => {
-    await supabase.from("transactions").update({ payment_status: "paid" }).eq("id", txId);
+    await (supabase.from("transactions") as any).update({ payment_status: "paid" }).eq("id", txId);
     setPendingDues((prev) => prev.filter((t) => t.id !== txId));
   };
+
+  if (!dek) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-3">
+        <div style={{ fontSize: "40px" }}>🔒</div>
+        <h2 className="text-xl font-semibold">Vault is locked</h2>
+        <p className="text-muted-foreground text-sm">
+          Your encryption key is not loaded. Please sign in again.
+        </p>
+        <Button onClick={() => navigate("/login", { state: { vaultLocked: true } })}>
+          Unlock Vault
+        </Button>
+      </div>
+    );
+  }
 
   if (!activeBusiness) {
     return (
