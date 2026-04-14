@@ -131,20 +131,17 @@ const AccountDetail = () => {
       }
     }
 
-    const { error } = await (supabase as any).rpc("create_transaction", {
-      p_user_id: user.id,
-      p_business_id: activeBusiness.id,
-      p_account_id: id,
-      p_type: form.type,
-      p_payment_method: form.payment_method,
-      p_amount: amount,
-      p_amount_enc: encFields.amount_enc || null,
-      p_amount_iv: encFields.amount_iv || null,
-      p_notes: form.notes || null,
-      p_notes_enc: encFields.notes_enc || null,
-      p_notes_iv: encFields.notes_iv || null,
-      p_category_id: form.category_id || null,
-      p_transaction_date: form.transaction_date,
+    const { error } = await (supabase.from("transactions") as any).insert({
+      user_id: user.id,
+      business_id: activeBusiness.id,
+      account_id: id,
+      type: form.type,
+      payment_method: form.payment_method,
+      amount,
+      ...encFields,
+      notes: form.notes || null,
+      category_id: form.category_id || null,
+      transaction_date: form.transaction_date,
     });
     if (error) { toast.error(error.message); return; }
 

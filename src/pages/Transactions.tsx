@@ -63,7 +63,7 @@ const Transactions = () => {
     const [txRes, accRes, catRes] = await Promise.all([
       supabase
         .from("transactions")
-        .select("*, accounts(name), categories(name, color), transfer_account:accounts!transfer_to_account_id(name)", { count: "exact" })
+        .select("*, accounts(name), categories(name, color)", { count: "exact" })
         .eq("business_id", activeBusiness.id)
         .order("transaction_date", { ascending: false })
         .range(from, to),
@@ -106,37 +106,70 @@ const Transactions = () => {
     const amount = parseFloat(form.amount);
     if (isNaN(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
 
-    let encryptedFields: Record<string, string> = {};
+    // Encrypt amount (reused across both records for transfers)
+    let amountEnc: Record<string, string> = {};
     if (dek) {
       const { ciphertext: amount_enc, iv: amount_iv } = await encryptField(amount.toString(), dek);
-      encryptedFields = { amount_enc, amount_iv };
-      if (form.notes) {
-        const { ciphertext: notes_enc, iv: notes_iv } = await encryptField(form.notes, dek);
-        encryptedFields = { ...encryptedFields, notes_enc, notes_iv };
-      }
+      amountEnc = { amount_enc, amount_iv };
     }
 
-    const { error } = await (supabase as any).rpc("create_transaction", {
-      p_user_id: user.id,
-      p_business_id: activeBusiness.id,
-      p_account_id: form.account_id || null,
-      p_type: form.type,
-      p_payment_method: form.payment_method,
-      p_amount: amount,
-      p_amount_enc: encryptedFields.amount_enc || null,
-      p_amount_iv: encryptedFields.amount_iv || null,
-      p_notes: form.notes || null,
-      p_notes_enc: encryptedFields.notes_enc || null,
-      p_notes_iv: encryptedFields.notes_iv || null,
-      p_category_id: form.category_id || null,
-      p_transaction_date: form.transaction_date,
-      p_transfer_to_account_id: form.type === "transfer" ? (form.transfer_to_account_id || null) : null,
-      p_payment_status: form.payment_status || "paid",
-    });
-    if (error) { toast.error(error.message); return; }
+    const base: Record<string, any> = {
+      user_id: user.id,
+      business_id: activeBusiness.id,
+      payment_method: form.payment_method,
+      amount,
+      ...amountEnc,
+      category_id: form.category_id || null,
+      transaction_date: form.transaction_date,
+    };
+
+    if (form.type === "transfer") {
+      // Transfer = one debit from source + one credit to destination
+      if (!form.account_id || !form.transfer_to_account_id) {
+        toast.error("Select both source and destination accounts");
+        return;
+      }
+      const fromName = accounts.find((a) => a.id === form.account_id)?.name || "account";
+      const toName = accounts.find((a) => a.id === form.transfer_to_account_id)?.name || "account";
+      const debitNote = `Transfer to ${toName}`;
+      const creditNote = `Transfer from ${fromName}`;
+
+      let debitNotesEnc: Record<string, string> = {};
+      let creditNotesEnc: Record<string, string> = {};
+      if (dek) {
+        const d = await encryptField(debitNote, dek);
+        debitNotesEnc = { notes_enc: d.ciphertext, notes_iv: d.iv };
+        const c = await encryptField(creditNote, dek);
+        creditNotesEnc = { notes_enc: c.ciphertext, notes_iv: c.iv };
+      }
+
+      const [debitRes, creditRes] = await Promise.all([
+        (supabase.from("transactions") as any).insert({
+          ...base, account_id: form.account_id, type: "debit",
+          notes: debitNote, ...debitNotesEnc,
+        }),
+        (supabase.from("transactions") as any).insert({
+          ...base, account_id: form.transfer_to_account_id, type: "credit",
+          notes: creditNote, ...creditNotesEnc,
+        }),
+      ]);
+      if (debitRes.error) { toast.error(debitRes.error.message); return; }
+      if (creditRes.error) { toast.error(creditRes.error.message); return; }
+    } else {
+      let notesEnc: Record<string, string> = {};
+      if (form.notes && dek) {
+        const { ciphertext: notes_enc, iv: notes_iv } = await encryptField(form.notes, dek);
+        notesEnc = { notes_enc, notes_iv };
+      }
+      const { error } = await (supabase.from("transactions") as any).insert({
+        ...base, account_id: form.account_id || null,
+        type: form.type, notes: form.notes || null, ...notesEnc,
+      });
+      if (error) { toast.error(error.message); return; }
+    }
 
     logAudit(user.id, "TRANSACTION_CREATE", { type: form.type });
-    toast.success(form.type === "transfer" ? "Transfer recorded" : "Transaction created");
+    toast.success(form.type === "transfer" ? "Transfer recorded — both accounts updated" : "Transaction created");
     resetForm();
     setDialogOpen(false);
     fetchData();
@@ -167,7 +200,7 @@ const Transactions = () => {
       updatePayload.transfer_to_account_id = form.transfer_to_account_id || null;
     }
 
-    const { error } = await supabase.from("transactions").update(updatePayload).eq("id", editingTx.id);
+    const { error } = await (supabase.from("transactions") as any).update(updatePayload).eq("id", editingTx.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Transaction updated");
     resetForm();
@@ -201,7 +234,7 @@ const Transactions = () => {
 
   const handleStatusToggle = async (tx: any) => {
     const newStatus = tx.payment_status === "paid" ? "pending" : "paid";
-    const { error } = await supabase.from("transactions").update({ payment_status: newStatus }).eq("id", tx.id);
+    const { error } = await (supabase.from("transactions") as any).update({ payment_status: newStatus }).eq("id", tx.id);
     if (error) { toast.error(error.message); return; }
     toast.success("Status updated");
     fetchData();
@@ -373,7 +406,7 @@ const Transactions = () => {
           {filtered.map((tx) => {
             const isTransfer = tx.type === "transfer";
             const fromName = tx.accounts?.name || "—";
-            const toName = tx.transfer_account?.name || "—";
+            const toName = accounts.find((a) => a.id === (tx as any).transfer_to_account_id)?.name || "—";
             const txStatus = tx.payment_status || "paid";
             return (
               <div key={tx.id} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
