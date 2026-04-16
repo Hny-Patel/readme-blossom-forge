@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Supabase CLI temp files (contains project ref, org ID, DB connection URL, email)
+supabase/.temp/
+
 # Logs
 logs
 *.log
@@ -27,3 +30,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+supabase/.temp/
