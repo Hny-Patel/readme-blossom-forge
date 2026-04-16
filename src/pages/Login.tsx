@@ -55,14 +55,61 @@ const Login = () => {
       navigate(returnTo);
     } catch (vaultError) {
       if (vaultError instanceof VaultError && vaultError.code === 'NO_KEY_ROW') {
-        // No vault key exists — create one now (user is authenticated, so RLS will pass)
-        try {
-          const generatedRecoveryKey = await createVaultKey(password, data.user.id);
-          setNewRecoveryKey(generatedRecoveryKey);
-          setView('new-recovery-key');
-        } catch (createError) {
-          await supabase.auth.signOut();
-          toast.error("Could not set up your vault. Please try signing up again.");
+        // No vault key in DB — likely first login after email confirmation.
+        // Check if signup stored pending key data in localStorage.
+        const pendingRaw = localStorage.getItem(`vl_pending_${data.user.id}`);
+
+        if (pendingRaw) {
+          try {
+            const pending = JSON.parse(pendingRaw);
+            // Insert the ORIGINAL key data from signup (preserves the recovery key the user saved)
+            const { error: keyError } = await supabase.from("user_keys").upsert({
+              user_id: data.user.id,
+              encrypted_dek: pending.encrypted_dek,
+              dek_iv: pending.dek_iv,
+              pbkdf2_salt: pending.pbkdf2_salt,
+              recovery_encrypted_dek: pending.recovery_encrypted_dek,
+            }, { onConflict: "user_id" });
+
+            if (keyError) throw new Error(keyError.message);
+
+            // Create business if it wasn't saved during signup
+            if (pending.business_name) {
+              const { count } = await supabase
+                .from("businesses")
+                .select("id", { count: "exact", head: true })
+                .eq("user_id", data.user.id) as any;
+              if (!count || count === 0) {
+                await supabase.from("businesses").insert({
+                  user_id: data.user.id,
+                  name: pending.business_name,
+                  type: "other",
+                });
+              }
+            }
+
+            // Clear localStorage — setup complete
+            localStorage.removeItem(`vl_pending_${data.user.id}`);
+
+            // Unlock vault with original key and proceed
+            await unlockVault(password, data.user.id);
+            logAudit(data.user.id, "LOGIN");
+            navigate(returnTo);
+          } catch (setupError) {
+            console.error("Failed to complete vault setup from pending data:", setupError);
+            await supabase.auth.signOut();
+            toast.error("Could not set up your vault. Please try signing up again.");
+          }
+        } else {
+          // No pending data — generate a new vault key (edge case: localStorage was cleared)
+          try {
+            const generatedRecoveryKey = await createVaultKey(password, data.user.id);
+            setNewRecoveryKey(generatedRecoveryKey);
+            setView('new-recovery-key');
+          } catch (createError) {
+            await supabase.auth.signOut();
+            toast.error("Could not set up your vault. Please try signing up again.");
+          }
         }
       } else {
         await supabase.auth.signOut();

@@ -8,6 +8,35 @@ import { toast } from "sonner";
 import { Shield, Lock, Mail, Building2, Copy, CheckCircle2, AlertTriangle } from "lucide-react";
 import { deriveKEK, generateDEK, wrapDEK, toBase64 } from "@/lib/crypto";
 
+// Common disposable/temporary email domains
+const BLOCKED_DOMAINS = new Set([
+  "mailinator.com","guerrillamail.com","guerrillamail.info","guerrillamail.biz","guerrillamail.de",
+  "guerrillamail.net","guerrillamail.org","grr.la","sharklasers.com","spam4.me",
+  "yopmail.com","yopmail.fr","yopmail.net","cool.fr.nf","jetable.fr.nf","nospam.ze.tc",
+  "nomail.xl.cx","mega.zik.dj","speed.1s.fr","courriel.fr.nf","moncourrier.fr.nf",
+  "monemail.fr.nf","monmail.fr.nf","temp-mail.org","tmpmail.net","tmpmail.org",
+  "throwaway.email","throwam.com","trashmail.com","trashmail.me","trashmail.net",
+  "trashmail.io","trashmail.at","trash-mail.at","tempr.email","discard.email",
+  "mailnull.com","spamgourmet.com","maildrop.cc","10minutemail.com","10minutemail.net",
+  "getairmail.com","fakeinbox.com","dispostable.com","mailtemp.info","wegwerfmail.de",
+  "mt2015.com","filzmail.com","owlpic.com","spamdecoy.net","tempmailo.com","moakt.com",
+  "mailboxy.fun","getnada.com","spamhereplease.com","spamhereplease.net",
+  "mailnesia.com","spamfree24.org","spamfree24.de","spamfree24.net","spamfree24.info",
+]);
+
+function isDisposableEmail(email: string): boolean {
+  const domain = email.split("@")[1]?.toLowerCase();
+  return domain ? BLOCKED_DOMAINS.has(domain) : false;
+}
+
+function validatePassword(pw: string): string | null {
+  if (pw.length < 8) return "Password must be at least 8 characters";
+  if (!/[0-9]/.test(pw) && !/[^a-zA-Z0-9]/.test(pw)) {
+    return "Password must contain at least one number or special character";
+  }
+  return null;
+}
+
 const Signup = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -22,10 +51,18 @@ const Signup = () => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
+
+    // ── Validation ────────────────────────────────────────────
+    if (isDisposableEmail(email)) {
+      toast.error("Temporary or disposable email addresses are not allowed. Please use a permanent email.");
       return;
     }
+    const pwError = validatePassword(password);
+    if (pwError) {
+      toast.error(pwError);
+      return;
+    }
+
     setLoading(true);
 
     const { data, error } = await supabase.auth.signUp({
@@ -64,8 +101,7 @@ const Signup = () => {
       const recKek = await deriveKEK(recoveryHex, recSalt);
       const recWrapped = await wrapDEK(dek, recKek, recIv);
 
-      // 3. Save to user_keys
-      const { error: keyError } = await supabase.from("user_keys").insert({
+      const keyPayload = {
         user_id: data.user.id,
         encrypted_dek: toBase64(wrappedDEK),
         dek_iv: toBase64(iv),
@@ -75,25 +111,38 @@ const Signup = () => {
           iv: toBase64(recIv),
           salt: toBase64(recSalt),
         }),
-      });
+      };
+
+      // 3. Try to save to user_keys immediately
+      const { error: keyError } = await supabase.from("user_keys").insert(keyPayload);
 
       if (keyError) {
-        // This can happen if email confirmation is required and the session isn't active yet.
-        // The key will be created on first login instead.
-        console.warn("user_keys insert failed (will retry on login):", keyError.message);
+        // Email confirmation required — user not yet active in RLS.
+        // Persist the key payload + business name in localStorage.
+        // Login.tsx will complete setup on first login using this data,
+        // ensuring the user keeps the SAME recovery key they saved here.
+        console.warn("user_keys insert pending (will complete on first login):", keyError.message);
       }
 
-      // 4. Create the first business
+      // 4. Store pending setup data (always, as a safety net for email-confirm flows)
+      localStorage.setItem(`vl_pending_${data.user.id}`, JSON.stringify({
+        ...keyPayload,
+        recovery_hex: recoveryHex,
+        business_name: businessName,
+      }));
+
+      // 5. Try to create first business (may fail if email not confirmed)
       const { error: bizError } = await supabase.from("businesses").insert({
         user_id: data.user.id,
         name: businessName,
         type: "other",
       });
       if (bizError) {
-        console.error("Failed to create business:", bizError);
+        // Will be created on first login via the pending data in localStorage
+        console.warn("Business creation pending (will complete on first login):", bizError.message);
       }
 
-      // 5. Show recovery key modal
+      // 6. Show recovery key modal
       setRecoveryKey(recoveryHex);
     } catch (cryptoError) {
       console.error("Encryption setup failed:", cryptoError);
@@ -221,18 +270,23 @@ const Signup = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">
+                Password
+                <span className="text-xs text-muted-foreground font-normal ml-2">
+                  min. 8 chars with a number or symbol
+                </span>
+              </Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Min. 6 characters"
+                  placeholder="Min. 8 characters"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10"
                   required
-                  minLength={6}
+                  minLength={8}
                 />
               </div>
             </div>
