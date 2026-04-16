@@ -15,6 +15,7 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const vaultLocked = location.state?.vaultLocked === true;
+  const returnTo: string = location.state?.from || "/";
   const { unlockVault, unlockVaultWithRecovery, createVaultKey } = useCrypto();
 
   const [view, setView] = useState<LoginView>('login');
@@ -51,7 +52,7 @@ const Login = () => {
     try {
       await unlockVault(password, data.user.id);
       logAudit(data.user.id, "LOGIN");
-      navigate("/");
+      navigate(returnTo);
     } catch (vaultError) {
       if (vaultError instanceof VaultError && vaultError.code === 'NO_KEY_ROW') {
         // No vault key exists — create one now (user is authenticated, so RLS will pass)
@@ -86,7 +87,7 @@ const Login = () => {
 
     try {
       await unlockVaultWithRecovery(recoveryKey.trim(), data.user.id);
-      navigate("/");
+      navigate(returnTo);
     } catch (vaultError) {
       await supabase.auth.signOut();
       if (vaultError instanceof VaultError && vaultError.code === 'NO_RECOVERY_KEY') {

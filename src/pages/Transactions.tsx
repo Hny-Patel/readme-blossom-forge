@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/useBusiness";
 import { useCrypto } from "@/hooks/useCrypto";
+import { useSubscription } from "@/hooks/useSubscription";
+import UpgradePrompt from "@/components/UpgradePrompt";
 import { encryptField, decryptField } from "@/lib/crypto";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +39,8 @@ const Transactions = () => {
   const { user } = useAuth();
   const { activeBusiness } = useBusiness();
   const { dek, isUnlocked } = useCrypto();
+  const { isOverLimit } = useSubscription();
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -110,6 +114,7 @@ const Transactions = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !activeBusiness) return;
+    if (isOverLimit("transactions_this_month")) { setUpgradeOpen(true); return; }
     const amount = parseFloat(form.amount);
     if (isNaN(amount) || amount <= 0) { toast.error("Enter a valid amount"); return; }
 
@@ -264,6 +269,7 @@ const Transactions = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <UpgradePrompt open={upgradeOpen} onClose={() => setUpgradeOpen(false)} reason="add more transactions this month" limitType="transactions" />
       {!isUnlocked && (
         <Alert variant="destructive">
           <Lock className="w-4 h-4" />

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useBusiness } from "@/hooks/useBusiness";
 import { useCrypto } from "@/hooks/useCrypto";
+import { useSubscription } from "@/hooks/useSubscription";
+import UpgradePrompt from "@/components/UpgradePrompt";
 import { decryptField } from "@/lib/crypto";
 import {
   BarChart,
@@ -24,6 +26,7 @@ import { ArrowUpRight, ArrowDownLeft, Target, TrendingUp } from "lucide-react";
 const Analytics = () => {
   const { activeBusiness } = useBusiness();
   const { dek, isUnlocked } = useCrypto();
+  const { featureLocked } = useSubscription();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalIncome: 0,
@@ -159,6 +162,10 @@ const Analytics = () => {
 
   if (loading) {
     return <div className="text-center text-muted-foreground p-8">Loading analytics...</div>;
+  }
+
+  if (featureLocked("has_analytics")) {
+    return <UpgradePrompt open reason="access Analytics" limitType="feature" onClose={() => history.back()} />;
   }
 
   return (

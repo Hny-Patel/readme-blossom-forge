@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ArrowDownLeft, ArrowUpRight, IndianRupee, TrendingUp, Plus, Lock } from "lucide-react";
+import WhatsAppReminder from "@/components/WhatsAppReminder";
 import { Link } from "react-router-dom";
 import { format, subDays } from "date-fns";
 
@@ -29,7 +30,7 @@ const Dashboard = () => {
     const run = async () => {
       setLoading(true);
       const [txRes, accRes] = await Promise.all([
-        supabase.from("transactions").select("*, accounts!account_id(id, name)").eq("business_id", activeBusiness.id).order("transaction_date", { ascending: false }),
+        supabase.from("transactions").select("*, accounts!account_id(id, name, phone)").eq("business_id", activeBusiness.id).order("transaction_date", { ascending: false }),
         supabase.from("accounts").select("id").eq("business_id", activeBusiness.id),
       ]);
 
@@ -287,10 +288,19 @@ const Dashboard = () => {
                       {isOverdue && " · Overdue"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 ml-3">
+                  <div className="flex items-center gap-2 ml-3 flex-wrap justify-end">
                     <span className={`font-mono text-sm font-semibold ${tx.type === "credit" ? "text-chart-credit" : "text-chart-debit"}`}>
                       {tx.type === "credit" ? "+" : "-"}₹{Number(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                     </span>
+                    {tx.accounts?.phone && (
+                      <WhatsAppReminder
+                        customerName={tx.accounts?.name || ""}
+                        customerPhone={tx.accounts.phone}
+                        pendingAmount={tx.amount}
+                        businessName={activeBusiness?.name || ""}
+                        accountType="customer"
+                      />
+                    )}
                     <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => markPaid(tx.id)}>
                       Mark Paid
                     </Button>

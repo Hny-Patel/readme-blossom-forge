@@ -3,11 +3,12 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useBusiness } from "@/hooks/useBusiness";
 import { useCrypto } from "@/hooks/useCrypto";
+import { useAdmin } from "@/hooks/useAdmin";
 import { startInactivityTimer } from "@/lib/session";
 import { supabase } from "@/integrations/supabase/client";
 import {
   LayoutDashboard, Users, ArrowLeftRight, Tag, Settings, LogOut,
-  Shield, Menu, X, ChevronDown, Building2, BarChart2, FileText, Lock,
+  Shield, Menu, X, ChevronDown, Building2, BarChart2, FileText, Lock, BookOpen, Receipt,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -16,6 +17,8 @@ import {
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/accounts", icon: Users, label: "Accounts" },
+  { to: "/expenses", icon: Receipt, label: "Expenses" },
+  { to: "/cashbook", icon: BookOpen, label: "Cashbook" },
   { to: "/transactions", icon: ArrowLeftRight, label: "Transactions" },
   { to: "/categories", icon: Tag, label: "Categories" },
   { to: "/analytics", icon: BarChart2, label: "Analytics" },
@@ -27,6 +30,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const { user, signOut } = useAuth();
   const { businesses, activeBusiness, setActiveBusiness } = useBusiness();
   const { isUnlocked, lockVault } = useCrypto();
+  const { isAdmin } = useAdmin();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
@@ -149,6 +153,15 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           <div className="px-3 py-1 text-xs text-muted-foreground truncate">
             {user?.email}
           </div>
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className="flex items-center gap-3 px-3 py-2 rounded-md text-xs text-red-400 hover:bg-red-500/10 transition-colors font-medium"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              Admin Panel
+            </Link>
+          )}
           <button
             onClick={signOut}
             className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent/50 w-full transition-colors"
